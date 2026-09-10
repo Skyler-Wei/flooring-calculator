@@ -123,13 +123,32 @@ function initViewers() {
     containerView = createScene('container_viewer');
 }
 
+function disposeGroup(view, group) {
+    if (!group) return;
+    if (view) view.scene.remove(group);
+    group.traverse(object => {
+        if (object.geometry) object.geometry.dispose();
+        if (object.material) {
+            const materials = Array.isArray(object.material) ? object.material : [object.material];
+            materials.forEach(material => material.dispose());
+        }
+    });
+}
+
+function clearViewerGroups() {
+    disposeGroup(palletView, palletGroup);
+    disposeGroup(containerView, containerGroup);
+    palletGroup = null;
+    containerGroup = null;
+}
+
 // ============================================================
 // 托盘 3D 视图
 // ============================================================
 function renderPallet3D(result) {
     if (!palletView) return;
     // 清除旧内容
-    if (palletGroup) { palletView.scene.remove(palletGroup); }
+    disposeGroup(palletView, palletGroup);
     palletGroup = new THREE.Group();
 
     const pallet = result.palletSummary;
@@ -138,7 +157,6 @@ function renderPallet3D(result) {
     const palletL = result.input.pallet.length;
     const palletW = result.input.pallet.width;
     const palletH = result.input.pallet.height;
-    const boxGap = result.input.gaps.boxGap;
 
     // 托盘底座
     const baseGeo = new THREE.BoxGeometry(palletL, palletH, palletW);
@@ -161,7 +179,14 @@ function renderPallet3D(result) {
     const offsetX = (palletL - maxExtX) / 2;
     const offsetZ = (palletW - maxExtZ) / 2;
 
-    for (let lyr = 0; lyr < pallet.layers; lyr++) {
+    if (pallet.totalBoxes > 5000) {
+        const cargo = new THREE.Mesh(new THREE.BoxGeometry(maxExtX, pallet.cargoHeight, maxExtZ),
+            new THREE.MeshStandardMaterial({ color: COLOR_H, transparent: true, opacity: 0.8 }));
+        cargo.position.set(palletL / 2, palletH + pallet.cargoHeight / 2, palletW / 2);
+        palletGroup.add(cargo);
+    }
+    const displayLayers = pallet.totalBoxes > 5000 ? 0 : pallet.layers;
+    for (let lyr = 0; lyr < displayLayers; lyr++) {
         const color = LAYER_COLORS[lyr % LAYER_COLORS.length];
         const mat = new THREE.MeshStandardMaterial({
             color, transparent: true, opacity: 0.8, roughness: 0.4,
@@ -169,7 +194,7 @@ function renderPallet3D(result) {
         const yBase = palletH + lyr * bH;
 
         for (const p of placements) {
-            const geo = new THREE.BoxGeometry(p.l - 0.5, bH - 0.5, p.w - 0.5);
+            const geo = new THREE.BoxGeometry(p.l * 0.999, bH * 0.99, p.w * 0.999);
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.set(
                 offsetX + p.x + p.l / 2,
@@ -199,7 +224,7 @@ function renderPallet3D(result) {
 // ============================================================
 function renderContainer3D(result) {
     if (!containerView) return;
-    if (containerGroup) { containerView.scene.remove(containerGroup); }
+    disposeGroup(containerView, containerGroup);
     containerGroup = new THREE.Group();
 
     const ct = result.containerTotal;
@@ -207,7 +232,7 @@ function renderContainer3D(result) {
     const cLen = result.input.container.length;
     const cWid = result.input.container.width;
     const cHei = result.input.container.height;
-    const wallGap = result.input.gaps.wallGap;
+    const wallGap = 0;
     const palletH = result.input.pallet.height;
 
     // 货柜外框 (线框)
@@ -259,14 +284,14 @@ function renderContainer3D(result) {
                 const pz = wallGap + containerOffsetZ + p.y + p.w / 2;
 
                 // 托盘底座
-                const bGeo = new THREE.BoxGeometry(p.l - 2, palletH - 1, p.w - 2);
+                const bGeo = new THREE.BoxGeometry(p.l * 0.999, palletH * 0.999, p.w * 0.999);
                 const bMesh = new THREE.Mesh(bGeo, new THREE.MeshStandardMaterial({ color: 0xc2956b, roughness: 0.8 }));
                 bMesh.position.set(px, yBase + palletH / 2, pz);
                 containerGroup.add(bMesh);
 
                 // 货物块 (简化为一个大方块)
                 const cargoH = ps.cargoHeight;
-                const cGeo2 = new THREE.BoxGeometry(p.l - 4, cargoH - 2, p.w - 4);
+                const cGeo2 = new THREE.BoxGeometry(p.l * 0.997, cargoH * 0.997, p.w * 0.997);
                 const cMesh = new THREE.Mesh(cGeo2, mat);
                 cMesh.position.set(px, yBase + palletH + cargoH / 2, pz);
                 cMesh.castShadow = true;
