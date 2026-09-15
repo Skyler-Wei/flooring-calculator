@@ -51,17 +51,73 @@ const PALLET_DIMENSION_DEFAULTS = new Map([
     ["1830|230",[1850,990]],["1832|232",[1850,990]],["2400|600",[2440,635]],
 ]);
 
+// 作为完全无匹配时的可解释候选：优先使用汇总表中出现过的常用尺寸，
+// 再补充行业常见的标准托盘尺寸；候选顺序不代表随机选择。
+const STANDARD_PALLET_DIMENSIONS = [
+    [1000, 1000], [1100, 1100], [1100, 1000], [1200, 1000], [1200, 800],
+    [1219, 1016], [1220, 985], [1200, 1200], [1300, 1100], [2440, 1220],
+];
+const PALLET_DIMENSION_FREQUENCY = new Map();
+for (const entry of PALLET_SIZE_DATA) {
+    const key = `${entry.palletLength}|${entry.palletWidth}`;
+    PALLET_DIMENSION_FREQUENCY.set(key, (PALLET_DIMENSION_FREQUENCY.get(key) || 0) + 1);
+}
+
 function palletValueEquals(first, second) {
     return Number.isFinite(first) && Number.isFinite(second) && Math.abs(first - second) < 1e-7;
 }
 
-function findCommonPalletSize(floor, piecesPerBox) {
+function estimatePalletSize(floor, box = {}) {
+    if (!Number.isFinite(floor.length) || !Number.isFinite(floor.width)) return null;
+    const boxLength = Number.isFinite(box.length) ? box.length : floor.length + 4;
+    const boxWidth = Number.isFinite(box.width) ? box.width : floor.width + 4;
+    if (boxLength <= 0 || boxWidth <= 0) return null;
+    const dimensions = new Map();
+    for (const entry of PALLET_SIZE_DATA) dimensions.set(`${entry.palletLength}|${entry.palletWidth}`,
+        [entry.palletLength, entry.palletWidth]);
+    for (const [length, width] of STANDARD_PALLET_DIMENSIONS) dimensions.set(`${length}|${width}`, [length, width]);
+    // 加入按纸箱外廓向上取整的候选，避免无匹配时误选明显过大的托盘。
+    const roundUp = value => Math.ceil(value / 50) * 50;
+    dimensions.set(`${roundUp(boxLength + 20)}|${roundUp(boxWidth + 20)}`,
+        [roundUp(boxLength + 20), roundUp(boxWidth + 20)]);
+    const candidates = [];
+    for (const [length, width] of dimensions.values()) {
+        for (const [palletLength, palletWidth, rotated] of [[length, width, false], [width, length, true]]) {
+            const horizontal = Math.floor((palletLength + 1e-8) / boxLength);
+            const vertical = Math.floor((palletWidth + 1e-8) / boxWidth);
+            const count = horizontal * vertical;
+            if (!count) continue;
+            const usedArea = count * boxLength * boxWidth;
+            const palletArea = palletLength * palletWidth;
+            const frequency = PALLET_DIMENSION_FREQUENCY.get(`${rotated ? width : length}|${rotated ? length : width}`) || 0;
+            candidates.push({ palletLength, palletWidth, count, utilization: usedArea / palletArea, frequency, rotated });
+        }
+    }
+    if (!candidates.length) {
+        const roundUp = value => Math.ceil(value / 50) * 50;
+        return { palletLength: roundUp(boxLength + 20), palletWidth: roundUp(boxWidth + 20),
+            count: 1, utilization: boxLength * boxWidth / ((roundUp(boxLength + 20)) * roundUp(boxWidth + 20)),
+            frequency: 0, rotated: false, generated: true };
+    }
+    candidates.sort((a, b) => b.utilization - a.utilization || b.count - a.count
+        || b.frequency - a.frequency || a.palletLength * a.palletWidth - b.palletLength * b.palletWidth);
+    return candidates[0];
+}
+
+function findCommonPalletSize(floor, piecesPerBox, box = {}) {
     const directDimensions = PALLET_SIZE_DATA.filter(entry =>
         palletValueEquals(entry.floorLength, floor.length) && palletValueEquals(entry.floorWidth, floor.width));
     const rotated = !directDimensions.length;
     const sameDimensions = directDimensions.length ? directDimensions : PALLET_SIZE_DATA.filter(entry =>
         palletValueEquals(entry.floorLength, floor.width) && palletValueEquals(entry.floorWidth, floor.length));
-    if (!sameDimensions.length) return null;
+    if (!sameDimensions.length) {
+        const estimate = estimatePalletSize(floor, box);
+        if (!estimate) return null;
+        return { entry: { floorLength: floor.length, floorWidth: floor.width,
+            coreThickness: floor.thickness, padThickness: floor.padThickness, piecesPerBox,
+            palletLength: estimate.palletLength, palletWidth: estimate.palletWidth },
+        exact: false, estimated: true, rotated: estimate.rotated };
+    }
     const exact = sameDimensions.find(entry => palletValueEquals(entry.coreThickness, floor.thickness)
         && palletValueEquals(entry.padThickness, floor.padThickness)
         && palletValueEquals(entry.piecesPerBox, piecesPerBox));

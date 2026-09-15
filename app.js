@@ -46,7 +46,9 @@ function updateBoxLinkage() {
 function autoMatchPallet(applySize = true) {
     const floor = { length: valueOf('floor_length'), width: valueOf('floor_width'),
         thickness: valueOf('floor_thickness'), padThickness: valueOf('pad_thickness') };
-    const match = findCommonPalletSize(floor, valueOf('pieces_per_box'));
+    const match = findCommonPalletSize(floor, valueOf('pieces_per_box'), {
+        length: valueOf('box_length'), width: valueOf('box_width'),
+    });
     const hint = document.getElementById('pallet_match_hint');
     const reversedHint = Number.isFinite(floor.length) && Number.isFinite(floor.width) && floor.length < floor.width
         ? t('floor_dimensions_reversed') : '';
@@ -58,7 +60,7 @@ function autoMatchPallet(applySize = true) {
         document.getElementById('pallet_length').value = match.entry.palletLength;
         document.getElementById('pallet_width').value = match.entry.palletWidth;
     }
-    const matchHint = t(match.exact ? 'pallet_exact_match' : 'pallet_dimension_match', {
+    const matchHint = t(match.estimated ? 'pallet_estimated_match' : match.exact ? 'pallet_exact_match' : 'pallet_dimension_match', {
         length: match.entry.palletLength, width: match.entry.palletWidth,
     });
     hint.textContent = [reversedHint, matchHint].filter(Boolean).join(' ');
