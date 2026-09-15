@@ -211,7 +211,7 @@ function optimizeUniformPallets(input, boxParams, layerInfo, floorLayout) {
     if (!layerInfo.count || (layerInfo.cross && !layerInfo.variants[1].count) || !floorLayout.count
         || boxParams.boxWeight > limits.boxWeightLimit + 1e-9) return null;
     let best = null;
-    for (const stackLimit of [1, 2]) {
+    for (const stackLimit of [1, 2, 3]) {
         const heightLayers = fitCount(container.height / stackLimit - pallet.height, boxParams.boxHeight);
         for (let layers = 1; layers <= heightLayers; layers++) {
             const boxesPerPallet = boxesForLayers(layerInfo, layers);
@@ -222,7 +222,7 @@ function optimizeUniformPallets(input, boxParams, layerInfo, floorLayout) {
             if (palletCount < 1) continue;
             const boxes = palletCount * boxesPerPallet;
             if (!Number.isSafeInteger(boxes * input.box.piecesPerBox)) continue;
-            const verticalLayers = palletCount > floorLayout.count ? 2 : 1;
+            const verticalLayers = Math.ceil(palletCount / floorLayout.count);
             if (!best || boxes > best.boxes || (boxes === best.boxes && palletCount < best.palletCount)
                 || (boxes === best.boxes && palletCount === best.palletCount && verticalLayers < best.verticalLayers)) {
                 best = { boxes, boxesPerPallet, layers, palletCount, verticalLayers };
@@ -333,10 +333,10 @@ function packMixedPallets(specs, container, limits, layoutMode = 'auto') {
         let totalWeight = 0;
         for (const item of items) {
             if (totalWeight + item.weight > limits.containerWeightLimit + 1e-8) continue;
-            const stackTarget = placements.find(placed => placed.specIndex === item.specIndex && placed.stackCount === 1
+            const stackTarget = placements.find(placed => placed.specIndex === item.specIndex && placed.stackCount < 3
                 && placed.height + item.height <= container.height + 1e-8);
             if (stackTarget) {
-                stackTarget.stackCount = 2;
+                stackTarget.stackCount += 1;
                 stackTarget.stackItems.push(item);
                 stackTarget.height += item.height;
                 loaded.push(item);
@@ -407,7 +407,7 @@ function calculateMixedContainer(specs, container, limits, layoutMode = 'auto') 
         containerTotal: {
             floorLayout: { placements: packed.placements, count: packed.placements.length },
             floorPallets: packed.placements.length, actualPallets: packed.loaded.length,
-            verticalLayers: packed.placements.some(placed => placed.stackCount > 1) ? 2 : 1,
+            verticalLayers: packed.placements.reduce((max, placed) => Math.max(max, placed.stackCount), 1),
             upperPallets: packed.loaded.length - packed.placements.length,
             totalBoxes: null, totalPieces: null, totalArea: null, cargoWeight, auxiliaryWeight: 0,
             totalWeight: packed.totalWeight,

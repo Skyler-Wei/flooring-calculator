@@ -56,15 +56,21 @@ function palletValueEquals(first, second) {
 }
 
 function findCommonPalletSize(floor, piecesPerBox) {
-    const sameDimensions = PALLET_SIZE_DATA.filter(entry =>
+    const directDimensions = PALLET_SIZE_DATA.filter(entry =>
         palletValueEquals(entry.floorLength, floor.length) && palletValueEquals(entry.floorWidth, floor.width));
+    const rotated = !directDimensions.length;
+    const sameDimensions = directDimensions.length ? directDimensions : PALLET_SIZE_DATA.filter(entry =>
+        palletValueEquals(entry.floorLength, floor.width) && palletValueEquals(entry.floorWidth, floor.length));
     if (!sameDimensions.length) return null;
     const exact = sameDimensions.find(entry => palletValueEquals(entry.coreThickness, floor.thickness)
         && palletValueEquals(entry.padThickness, floor.padThickness)
         && palletValueEquals(entry.piecesPerBox, piecesPerBox));
-    if (exact) return { entry: exact, exact: true };
-    const fallback = PALLET_DIMENSION_DEFAULTS.get(`${floor.length}|${floor.width}`);
+    const orientEntry = entry => rotated
+        ? { ...entry, palletLength: entry.palletWidth, palletWidth: entry.palletLength }
+        : entry;
+    if (exact) return { entry: orientEntry(exact), exact: true, rotated };
+    const fallback = PALLET_DIMENSION_DEFAULTS.get(`${rotated ? floor.width : floor.length}|${rotated ? floor.length : floor.width}`);
     const entry = fallback ? { ...sameDimensions[0], palletLength: fallback[0], palletWidth: fallback[1] }
         : sameDimensions[0];
-    return { entry, exact: false };
+    return { entry: orientEntry(entry), exact: false, rotated };
 }

@@ -48,17 +48,20 @@ function autoMatchPallet(applySize = true) {
         thickness: valueOf('floor_thickness'), padThickness: valueOf('pad_thickness') };
     const match = findCommonPalletSize(floor, valueOf('pieces_per_box'));
     const hint = document.getElementById('pallet_match_hint');
+    const reversedHint = Number.isFinite(floor.length) && Number.isFinite(floor.width) && floor.length < floor.width
+        ? t('floor_dimensions_reversed') : '';
     if (!match) {
-        hint.textContent = t('pallet_no_match');
+        hint.textContent = [reversedHint, t('pallet_no_match')].filter(Boolean).join(' ');
         return;
     }
     if (applySize) {
         document.getElementById('pallet_length').value = match.entry.palletLength;
         document.getElementById('pallet_width').value = match.entry.palletWidth;
     }
-    hint.textContent = t(match.exact ? 'pallet_exact_match' : 'pallet_dimension_match', {
+    const matchHint = t(match.exact ? 'pallet_exact_match' : 'pallet_dimension_match', {
         length: match.entry.palletLength, width: match.entry.palletWidth,
     });
+    hint.textContent = [reversedHint, matchHint].filter(Boolean).join(' ');
 }
 
 function setupLinkage() {

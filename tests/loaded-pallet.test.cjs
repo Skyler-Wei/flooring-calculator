@@ -18,7 +18,7 @@ function checkLayout(result, c, limit) {
         const p = placements[i], spec = result.specs[p.specIndex];
         assert.ok(p.x >= 0 && p.y >= 0);
         assert.ok(p.x + p.l <= c.length + 1e-7 && p.y + p.w <= c.width + 1e-7);
-        assert.ok(p.stackCount >= 1 && p.stackCount <= 2);
+        assert.ok(p.stackCount >= 1 && p.stackCount <= 3);
         assert.ok(spec.height * p.stackCount <= c.height + 1e-7);
         assert.ok((p.l === spec.length && p.w === spec.width) || (p.l === spec.width && p.w === spec.length));
         for (let j = 0; j < i; j++) {
@@ -47,6 +47,11 @@ checkLayout(basic, container, limits.containerWeightLimit);
 assert.equal(basic.containerTotal.actualPallets, 4);
 assert.equal(basic.containerTotal.totalWeight, 2000, 'Loaded weights already include all materials');
 assert.equal(basic.containerTotal.upperPallets, 2);
+
+const threeHigh = calculate([{ ...pallet, height: 700, quantity: 3 }], { length: 1000, width: 1000, height: 2400 }, limits);
+checkLayout(threeHigh, { length: 1000, width: 1000, height: 2400 }, limits.containerWeightLimit);
+assert.equal(threeHigh.containerTotal.actualPallets, 3);
+assert.equal(threeHigh.containerTotal.upperPallets, 2);
 
 const heavy = calculate([{ ...pallet, quantity: 20 }], container, { containerWeightLimit: 1250 });
 checkLayout(heavy, container, 1250);
@@ -113,6 +118,6 @@ const singleInput = {
 };
 const single = context.calculateAll(singleInput, false);
 assert.equal(single.valid, true);
-assert.equal(single.containerTotal.totalBoxes, 1445);
-assert.ok(Math.abs(single.containerTotal.totalArea - 3199.6635) < 1e-7);
+assert.equal(single.containerTotal.totalBoxes, 1485);
+assert.ok(Math.abs(single.containerTotal.totalArea - 3288.2355) < 1e-7);
 console.log('Loaded-pallet validation, weight totals, stacking, geometry, orientations and single-size regression passed.');
