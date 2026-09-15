@@ -16,7 +16,7 @@ const COLOR_V = 0x22c55e; // 竖放托盘 绿
 function createScene(containerId) {
     const container = document.getElementById(containerId);
     if (!container) return null;
-    const w = container.clientWidth;
+    const w = Math.max(1, container.clientWidth);
     const h = container.clientHeight || 400;
 
     const scene = new THREE.Scene();
@@ -53,7 +53,7 @@ function createScene(containerId) {
 
     // Resize
     const ro = new ResizeObserver(() => {
-        const nw = container.clientWidth;
+        const nw = Math.max(1, container.clientWidth);
         const nh = container.clientHeight || 400;
         camera.aspect = nw / nh;
         camera.updateProjectionMatrix();
@@ -172,12 +172,10 @@ function renderPallet3D(result) {
 
     // 居中偏移：计算所有盒子的包围盒，在托盘上居中
     let maxExtX = 0, maxExtZ = 0;
-    for (const p of placements) {
+    for (const variant of layer.variants || [layer]) for (const p of variant.placements) {
         maxExtX = Math.max(maxExtX, p.x + p.l);
         maxExtZ = Math.max(maxExtZ, p.z + p.w);
     }
-    const offsetX = (palletL - maxExtX) / 2;
-    const offsetZ = (palletW - maxExtZ) / 2;
 
     if (pallet.totalBoxes > 5000) {
         const cargo = new THREE.Mesh(new THREE.BoxGeometry(maxExtX, pallet.cargoHeight, maxExtZ),
@@ -193,7 +191,12 @@ function renderPallet3D(result) {
         });
         const yBase = palletH + lyr * bH;
 
-        for (const p of placements) {
+        const layerPlacements = layer.cross ? layer.variants[lyr % 2].placements : placements;
+        const layerMaxX = layerPlacements.reduce((max, p) => Math.max(max, p.x + p.l), 0);
+        const layerMaxZ = layerPlacements.reduce((max, p) => Math.max(max, p.z + p.w), 0);
+        const offsetX = (palletL - layerMaxX) / 2;
+        const offsetZ = (palletW - layerMaxZ) / 2;
+        for (const p of layerPlacements) {
             const geo = new THREE.BoxGeometry(p.l * 0.999, bH * 0.99, p.w * 0.999);
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.set(
@@ -229,11 +232,12 @@ function renderContainer3D(result) {
 
     const ct = result.containerTotal;
     const ps = result.palletSummary;
-    const cLen = result.input.container.length;
-    const cWid = result.input.container.width;
-    const cHei = result.input.container.height;
+    const containerInput = result.multi ? result.container : result.input.container;
+    const cLen = containerInput.length;
+    const cWid = containerInput.width;
+    const cHei = containerInput.height;
     const wallGap = 0;
-    const palletH = result.input.pallet.height;
+    const palletH = result.multi ? 0 : result.input.pallet.height;
 
     // 货柜外框 (线框)
     const cGeo = new THREE.BoxGeometry(cLen, cHei, cWid);
@@ -254,6 +258,31 @@ function renderContainer3D(result) {
     // 托盘排列
     if (ct.floorLayout && ct.floorLayout.placements) {
         const placements = ct.floorLayout.placements;
+        if (result.multi) {
+            for (const p of placements) {
+                const spec = result.specs[p.specIndex];
+                // Only the loaded envelope is known. Do not invent empty-pallet or carton dimensions.
+                for (let stack = 0; stack < p.stackCount; stack++) {
+                    const yBase = stack * spec.height;
+                    const px = p.x + p.l / 2;
+                    const pz = p.y + p.w / 2;
+                    const color = LAYER_COLORS[p.specIndex % LAYER_COLORS.length];
+                    const cargoGeometry = new THREE.BoxGeometry(p.l * 0.997, spec.height * 0.997, p.w * 0.997);
+                    const cargoMesh = new THREE.Mesh(cargoGeometry,
+                        new THREE.MeshStandardMaterial({ color, transparent: true, opacity: 0.76, roughness: 0.5 }));
+                    cargoMesh.position.set(px, yBase + spec.height / 2, pz);
+                    cargoMesh.castShadow = true;
+                    cargoMesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(cargoGeometry),
+                        new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.12, transparent: true })));
+                    containerGroup.add(cargoMesh);
+                }
+            }
+            containerView.scene.add(containerGroup);
+            containerView.orbit.target.set(cLen / 2, cHei / 2, cWid / 2);
+            containerView.orbit.state.radius = Math.max(cLen, cWid, cHei) * 1.8;
+            containerView.orbit.update();
+            return;
+        }
         const palletTotalH = ps.totalHeight;
 
         // 计算居中偏移：托盘整体在货柜有效空间内居中
